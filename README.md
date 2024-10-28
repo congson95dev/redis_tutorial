@@ -14,16 +14,16 @@
 
 `docker run --name redis-server -p 6379:6379 -d redis`
 
+Open 2 terminal and run:
 `python3 tutorial.py`
 
-## Probalilistic early expiration
+## Redlock
 
-Pre-calculate the probalilistic to see if the cache key is about to expired, then randomly pre-expired it and re-assign the data for that key
-
-The formula to probalilistic is noted detail in `is_probabilistically_expired()` function
+Lock the call until the cache is updated. <br>
+For example: there are 1000 requests that call to the same key, in this case, Redlock will lock all of them, only let the 1st request to process and re-assign the key, after finish, we will release the lock and let other requests to access.
 
 Result:
 
 ![alt text](image.png)
 
-As you see, some of the keys are pre-expired and re-assigned before the actual expired time occur.
+As you see, when 2 request calling at the same time, the Redlock lock the 2nd request until the cache is updated.
