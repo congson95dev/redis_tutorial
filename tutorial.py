@@ -1,56 +1,65 @@
 import redis
 import json
 import time
+import threading
 
-class CacheWithDistributedLock:
-    def __init__(self, redis_client, ttl, lock_ttl=5):
+class EarlyRecomputeCache:
+    def __init__(self, redis_client, ttl, recompute_threshold):
         self.redis = redis_client
         self.ttl = ttl
-        self.lock_ttl = lock_ttl
+        self.recompute_threshold = recompute_threshold
 
     def set(self, key, value):
         self.redis.setex(key, self.ttl, json.dumps(value))
 
-    def get(self, key, fallback_function=None):
-        # Try to retrieve data from cache
+    def get(self, key, fallback_function):
         value = self.redis.get(key)
+        print(f"TTL: '{self.redis.ttl(key)}'")
 
         if value:
-            print(f"Cache hit for key '{key}': {json.loads(value)}")
-            return json.loads(value)  # Cache hit
+            data = json.loads(value)
+            ttl_remaining = self.redis.ttl(key)
+            
+            # Trigger early recomputation if near expiration
+            if ttl_remaining <= self.recompute_threshold:
+                print(f"Key '{key}' is near expiration (TTL: {ttl_remaining}s). Recomputing in the background.")
+                threading.Thread(target=self._recompute_in_background, args=(key, fallback_function)).start()
 
-        # Cache miss: Acquire a distributed lock to prevent the Thundering Herd Problem
-        lock = self.redis.lock(f"lock:{key}", timeout=self.lock_ttl)
+            return data
 
-        if lock.acquire(blocking=False):  # Only proceed if lock is acquired
-            try:
-                new_value = fallback_function(key) if fallback_function else None
-                if new_value:
-                    self.set(key, new_value)
-                    print(f"Cache miss for key '{key}', recomputing data and setting cache.")
-                return new_value
-            finally:
-                lock.release()
-        else:
-            print(f"Another process is recomputing data for key '{key}', waiting for cache update...")
-            while not value:
-                time.sleep(0.1)  # Wait briefly before retrying
-                value = self.redis.get(key)
-            print(f"Retrieved updated value from cache for key '{key}': {json.loads(value)}")
-            return json.loads(value) if value else None  # Return the newly cached data
+        # Cache miss: compute and set the cache
+        print(f"Cache miss for key '{key}', computing and setting cache.")
+        new_value = fallback_function(key)
+        self.set(key, new_value)
+        return new_value
 
-redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
-cache_with_lock = CacheWithDistributedLock(
-    redis_client=redis_client,
-    ttl=10,
-    lock_ttl=5
-)
+    def _recompute_in_background(self, key, fallback_function):
+        new_value = fallback_function(key)
+        self.set(key, new_value)
+        print(f"Background recompute complete for key '{key}'.")
 
 def recompute_data(key):
-    time.sleep(2)  # Simulate time-consuming computation
-    return {"name": f"Value for {key}"}
+    time.sleep(2)  # Simulate a long computation time
+    return {"name": f"Value for key {key}"}
 
-key = "shared_key"
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+cache = EarlyRecomputeCache(redis_client=redis_client, ttl=10, recompute_threshold=3)  # 10s TTL, recompute when <3s remaining
 
-# Run this in multiple terminals to observe the behavior
-print(f"Retrieving value for key '{key}': {cache_with_lock.get(key, fallback_function=recompute_data)}")
+key = "1"
+cache.set(key, recompute_data(key))
+
+# Access cache and trigger early recomputation
+print("First retrieval:", cache.get(key, fallback_function=recompute_data))
+print("\nWaiting 7 seconds to reach recompute threshold...")
+time.sleep(7)
+
+# Retrieve again, should trigger early recomputation
+print("Second retrieval:", cache.get(key, fallback_function=recompute_data))
+
+# Give the background thread some time to complete
+time.sleep(3)
+print("\nRetrieving after background recompute complete:", cache.get(key, fallback_function=recompute_data))
+
+# Final check to see if the key isn't expired
+time.sleep(2)
+print("\nFinal retrieval:", cache.get(key, fallback_function=recompute_data))

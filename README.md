@@ -14,16 +14,14 @@
 
 `docker run --name redis-server -p 6379:6379 -d redis`
 
-Open 2 terminal and run:
 `python3 tutorial.py`
 
-## Redlock
+## Exeternal computation - early recomputation
 
-Lock the call until the cache is updated. <br>
-For example: there are 1000 requests that call to the same key, in this case, Redlock will lock all of them, only let the 1st request to process and re-assign the key, after finish, we will release the lock and let other requests to access.
+Set the early predict expire time, if that time meet, we will run the process in the background (using python Thread) to calculate and re-assign the key.
 
 Result:
 
-![alt text](image.png)
+![alt text](image-1.png)
 
-As you see, when 2 request calling at the same time, the Redlock lock the 2nd request until the cache is updated.
+As you see, when the predict expire time (less than or equal to <b>3 seconds</b>) is met, we run a background process to calculate and re-assign the key.
