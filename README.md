@@ -17,13 +17,13 @@
 Open 2 terminal and run:
 `python3 tutorial.py`
 
-## Redlock
+## Promise (asyncio.Future)
 
-Lock the call until the cache is updated. <br>
-For example: there are 1000 requests that call to the same key, in this case, Redlock will lock all of them, only let the 1st request to process and re-assign the key, after finish, we will release the lock and let other requests to access.
+Pending the call until the cache is updated. <br>
+For example: there are 1000 requests that call to the same key, in this case, `asyncio.Future` will pending all of them, only let the 1st request to process and re-assign the key, after finish, `asyncio.Future` will return the value to all requests, and after that, we delete the lock.
 
 Result:
 
 ![alt text](image.png)
 
-As you see, when 2 request calling at the same time, the Redlock lock the 2nd request until the cache is updated.
+As you see, when 4 request calling at the same time, the `asyncio.Future` pending all the requests from 2nd until the cache is updated.
