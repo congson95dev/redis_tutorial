@@ -15,6 +15,7 @@
 `docker run --name redis-server -p 6379:6379 -d redis`
 
 Open 2 terminal and run:
+
 `python3 tutorial.py`
 
 ## Redlock
